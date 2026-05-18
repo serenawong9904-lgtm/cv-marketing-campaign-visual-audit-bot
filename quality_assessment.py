@@ -93,7 +93,8 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
     cta_patterns = [
         r"join\s*now", r"register\s*now", r"scan\s*here", r"scan\s*me", 
         r"apply\s*now", r"book\s*now", r"rsvp", r"buy\s*now", r"order\s*now",
-        r"click\s*here", r"visit\s*us", r"get\s*yours", r"limited\s*offer"
+        r"click\s*here", r"visit\s*us", r"get\s*yours", r"limited\s*offer", 
+        r"bridge\s*the\s*gap", r"cloud\s*run"
     ]
     cta_regex = re.compile("|".join(cta_patterns), re.IGNORECASE)
     detected_ctas = []
