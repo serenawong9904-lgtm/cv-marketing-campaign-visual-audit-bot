@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 import telebot
 from flask import Flask
+from spellchecker import SpellChecker
 
 # Background container installation hook for EasyOCR setup
 try:
@@ -60,12 +61,17 @@ def check_image_quality(image_path):
 
 
 # =====================================================================
-# 🧠 EXTRACT TEXT REGION DETECTION & SPATIAL MAPPING (Member 2 - You)
+# 🧠 EXTRACT TEXT REGION DETECTION & SPATIAL MAPPING (Member 2)
 # =====================================================================
 def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
-    print(f"Initializing Adaptive EasyOCR Extraction Pipeline for: {image_path}")
+    """
+    Completely generalized Member 2 computer vision pipeline.
+    Uses dynamic token filtering and pattern normalization to intelligently clean 
+    OCR text distortions on ANY promotional, product, or event poster.
+    """
+    print(f"Initializing Adaptive Computer Vision Extraction Engine for: {image_path}")
     
-    # Initialize the reader for English language processing
+    # Initialize EasyOCR (Falls back to CPU if no GPU accelerator is present)
     reader = easyocr.Reader(['en'], gpu=False) 
     results = reader.readtext(image_path)
     
@@ -75,12 +81,15 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
             "message": "No text components or visual layouts detected in the image matrix."
         }
         
+    # Initialize the generalized english spell-checker dictionary
+    spell = SpellChecker()
+    
     all_extracted_elements = []
     headline_text = ""
     max_bounding_area = 0
     low_confidence_counter = 0 
     
-    # Generalized marketing pattern dictionary
+    # Universal Call-to-Action intent dictionary matching fundamental marketing behaviors
     cta_patterns = [
         r"join\s*now", r"register\s*now", r"scan\s*here", r"scan\s*me", 
         r"apply\s*now", r"book\s*now", r"rsvp", r"buy\s*now", r"order\s*now",
@@ -92,47 +101,95 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
     for (bbox, text, confidence) in results:
         top_left = [int(bbox[0][0]), int(bbox[0][1])]
         bottom_right = [int(bbox[2][0]), int(bbox[2][1])]
-        cleaned_text = text.strip()
+        raw_text = text.strip()
         
+        # 🧠 DYNAMIC LAYOUT PROCESSING & CHARACTER NORMALIZATION LOOP
+        words = raw_text.split()
+        processed_words = []
+        
+        for word in words:
+            # Strip outer punctuation for isolated character analytics
+            clean_word = re.sub(r'[^\w\s&]', '', word)
+            
+            # --- 1. DYNAMIC DATE SUFFIX CORRECTION ---
+            # Automatically catches and repairs missing letters on numeric dates (e.g., '8t' -> '8th', '1s' -> '1st')
+            if re.match(r'^\d+[tsrd]$', clean_word.lower()):
+                suffix_map = {'t': 'th', 's': 'st', 'n': 'nd', 'r': 'rd'}
+                last_char = clean_word.lower()[-1]
+                if last_char in suffix_map:
+                    word = word + suffix_map[last_char][1:]
+                processed_words.append(word)
+                continue
+            
+            # --- 2. DEFENSIVE TOKEN FILTERING ---
+            # Bypasses the spell-checker if the token is a standard symbol, a standalone number, 
+            # or a capitalized technical abbreviation/acronym.
+            if (
+                clean_word == "&" or 
+                clean_word.isdigit() or 
+                clean_word.isupper() or 
+                any(char.isdigit() for char in clean_word) or
+                confidence >= 0.85
+            ):
+                # Standardize character letter sub-types (e.g., misread letter O's inside numerical strings)
+                if any(char.isdigit() for char in word):
+                    word = word.replace('O', '0').replace('o', '0')
+                processed_words.append(word)
+                continue
+            
+            # --- 3. CONTEXTUAL SPELL-CHECK CORRECTION ---
+            # Dynamically calculates Levenshtein distances for low-confidence text segments (like cursive)
+            if clean_word.lower() not in spell:
+                correction = spell.correction(clean_word)
+                if correction and correction != clean_word:
+                    # Maintain the poster's original case-style configuration
+                    adjusted_case = correction.upper() if word.isupper() else correction.capitalize() if word[0].isupper() else correction
+                    processed_words.append(adjusted_case)
+                    continue
+                    
+            processed_words.append(word)
+            
+        cleaned_text = " ".join(processed_words)
+        
+        # --- 4. GENERALIZED TIME FORMAT PARSING ---
+        # Fixed placement of the case-insensitive flag (?i) to prevent runtime syntax exceptions
+        cleaned_text = re.sub(r'(?i)(\d+)[.・:](\d+)\s*(am|pm)', r'\1:\2\3', cleaned_text)
+
+        # Calculate spatial volume metrics to evaluate typography layout prominence
         width = bottom_right[0] - top_left[0]
         height = bottom_right[1] - top_left[1]
         current_area = width * height
         
-        # Track potential cursive text block distortions via confidence thresholds
-        is_low_confidence = False
+        # Increment the anomaly monitor tracking if character accuracy drop vectors look like cursive font noise
         if confidence < 0.65: 
             low_confidence_counter += 1
-            is_low_confidence = True
 
         element_entry = {
             "text": cleaned_text,
+            "raw_ocr_original": raw_text if raw_text != cleaned_text else "No Correction Needed",
             "confidence": float(round(confidence, 3)),
-            "potential_cursive_or_typo": is_low_confidence,
-            "bounding_box": {
-                "top_left": top_left,
-                "bottom_right": bottom_right
-            }
+            "bounding_box": {"top_left": top_left, "bottom_right": bottom_right}
         }
         all_extracted_elements.append(element_entry)
         
+        # HEADLINE DETECTION: Dynamic visual hierarchy logic.
         if current_area > max_bounding_area and len(cleaned_text) > 3:
             if not any(ext in cleaned_text.lower() for ext in ["preview", ".jpg", ".png", ".jpeg"]):
                 max_bounding_area = current_area
                 headline_text = cleaned_text
             
+        # CALL TO ACTION EVALUATOR: Checks text strings against universal intent metrics
         if cta_regex.search(cleaned_text):
             detected_ctas.append({
                 "text": cleaned_text,
                 "type": "textual_intent",
-                "coordinates": {
-                    "top_left": top_left,
-                    "bottom_right": bottom_right
-                }
+                "coordinates": {"top_left": top_left, "bottom_right": bottom_right}
             })
 
     total_regions = len(all_extracted_elements)
     has_cursive_anomaly = (low_confidence_counter / total_regions) > 0.15 if total_regions > 0 else False
 
+    # Package the finalized adaptive data contract payload for Member 3
     return {
         "status": "success",
         "metadata": {
@@ -148,6 +205,13 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
         }
     }
 
+if __name__ == "__main__":
+    try:
+        final_payload = extract_poster_text_and_coordinates("user_poster.jpg")
+        print("\n=== SUCCESS: CORRECT SPELLCHECK EXTRACTION OUTPUT ===")
+        print(json.dumps(final_payload, indent=4))
+    except Exception as e:
+        print(f"Execution Failure: {str(e)}")
 
 # =====================================================================
 # 🤖 TELEGRAM BOT CONTROLLERS (Member 1 Controllers + Member 2 Handoff)
