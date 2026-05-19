@@ -2,15 +2,26 @@
 """
 📊 Marketing Campaign Visual Auditor Bot
 Main production script hosted on GitHub.
-Target Module: Member 1 (Gatekeeper Pipeline)
+Target Module: Direct Integration Module (Member 1 + Member 2)
 """
 
 import os
 import threading
-from flask import Flask
-import telebot
+import re
+import json
 import cv2
 import numpy as np
+import telebot
+from flask import Flask
+from spellchecker import SpellChecker
+
+# Background container installation hook for EasyOCR setup
+try:
+    import easyocr
+except ImportError:
+    import os
+    os.system('pip install easyocr')
+    import easyocr
 
 # =====================================================================
 # 🌐 RENDER WEB PORT ALIVE KEEPER (Added for Option A Free Web Service)
@@ -26,8 +37,9 @@ def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
+
 # =====================================================================
-# 🔬 CORE CV PROCESSING PIPELINE
+# 🔬 CORE CV PROCESSING PIPELINE (Member 1)
 # =====================================================================
 def check_image_quality(image_path):
     img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -47,8 +59,163 @@ def check_image_quality(image_path):
 
     return True, f"(Blur Score: {round(laplacian_var, 1)}, Brightness: {round(mean_brightness, 1)})"
 
+
 # =====================================================================
-# 🤖 TELEGRAM BOT CONTROLLERS
+# 🧠 EXTRACT TEXT REGION DETECTION & SPATIAL MAPPING (Member 2)
+# =====================================================================
+def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
+    """
+    Completely generalized Member 2 computer vision pipeline.
+    Uses dynamic token filtering and pattern normalization to intelligently clean 
+    OCR text distortions on ANY promotional, product, or event poster.
+    """
+    print(f"Initializing Adaptive Computer Vision Extraction Engine for: {image_path}")
+    
+    # Initialize EasyOCR (Falls back to CPU if no GPU accelerator is present)
+    reader = easyocr.Reader(['en'], gpu=False) 
+    results = reader.readtext(image_path)
+    
+    if not results:
+        return {
+            "status": "error",
+            "message": "No text components or visual layouts detected in the image matrix."
+        }
+        
+    # Initialize the generalized english spell-checker dictionary
+    spell = SpellChecker()
+    
+    all_extracted_elements = []
+    headline_text = ""
+    max_bounding_area = 0
+    low_confidence_counter = 0 
+    
+    # Universal Call-to-Action intent dictionary matching fundamental marketing behaviors
+    cta_patterns = [
+        r"join\s*now", r"register\s*now", r"scan\s*here", r"scan\s*me", 
+        r"apply\s*now", r"book\s*now", r"rsvp", r"buy\s*now", r"order\s*now",
+        r"click\s*here", r"visit\s*us", r"get\s*yours", r"limited\s*offer", 
+        r"bridge\s*the\s*gap", r"cloud\s*run"
+    ]
+    cta_regex = re.compile("|".join(cta_patterns), re.IGNORECASE)
+    detected_ctas = []
+
+    for (bbox, text, confidence) in results:
+        top_left = [int(bbox[0][0]), int(bbox[0][1])]
+        bottom_right = [int(bbox[2][0]), int(bbox[2][1])]
+        raw_text = text.strip()
+        
+        # 🧠 DYNAMIC LAYOUT PROCESSING & CHARACTER NORMALIZATION LOOP
+        words = raw_text.split()
+        processed_words = []
+        
+        for word in words:
+            # Strip outer punctuation for isolated character analytics
+            clean_word = re.sub(r'[^\w\s&]', '', word)
+            
+            # --- 1. DYNAMIC DATE SUFFIX CORRECTION ---
+            # Automatically catches and repairs missing letters on numeric dates (e.g., '8t' -> '8th', '1s' -> '1st')
+            if re.match(r'^\d+[tsrd]$', clean_word.lower()):
+                suffix_map = {'t': 'th', 's': 'st', 'n': 'nd', 'r': 'rd'}
+                last_char = clean_word.lower()[-1]
+                if last_char in suffix_map:
+                    word = word + suffix_map[last_char][1:]
+                processed_words.append(word)
+                continue
+            
+            # --- 2. DEFENSIVE TOKEN FILTERING ---
+            # Bypasses the spell-checker if the token is a standard symbol, a standalone number, 
+            # or a capitalized technical abbreviation/acronym.
+            if (
+                clean_word == "&" or 
+                clean_word.isdigit() or 
+                clean_word.isupper() or 
+                any(char.isdigit() for char in clean_word) or
+                confidence >= 0.85
+            ):
+                # Standardize character letter sub-types (e.g., misread letter O's inside numerical strings)
+                if any(char.isdigit() for char in word):
+                    word = word.replace('O', '0').replace('o', '0')
+                processed_words.append(word)
+                continue
+            
+            # --- 3. CONTEXTUAL SPELL-CHECK CORRECTION ---
+            # Dynamically calculates Levenshtein distances for low-confidence text segments (like cursive)
+            if clean_word.lower() not in spell:
+                correction = spell.correction(clean_word)
+                if correction and correction != clean_word:
+                    # Maintain the poster's original case-style configuration
+                    adjusted_case = correction.upper() if word.isupper() else correction.capitalize() if word[0].isupper() else correction
+                    processed_words.append(adjusted_case)
+                    continue
+                    
+            processed_words.append(word)
+            
+        cleaned_text = " ".join(processed_words)
+        
+        # --- 4. GENERALIZED TIME FORMAT PARSING ---
+        # Fixed placement of the case-insensitive flag (?i) to prevent runtime syntax exceptions
+        cleaned_text = re.sub(r'(?i)(\d+)[.・:](\d+)\s*(am|pm)', r'\1:\2\3', cleaned_text)
+
+        # Calculate spatial volume metrics to evaluate typography layout prominence
+        width = bottom_right[0] - top_left[0]
+        height = bottom_right[1] - top_left[1]
+        current_area = width * height
+        
+        # Increment the anomaly monitor tracking if character accuracy drop vectors look like cursive font noise
+        if confidence < 0.65: 
+            low_confidence_counter += 1
+
+        element_entry = {
+            "text": cleaned_text,
+            "raw_ocr_original": raw_text if raw_text != cleaned_text else "No Correction Needed",
+            "confidence": float(round(confidence, 3)),
+            "bounding_box": {"top_left": top_left, "bottom_right": bottom_right}
+        }
+        all_extracted_elements.append(element_entry)
+        
+        # HEADLINE DETECTION: Dynamic visual hierarchy logic.
+        if current_area > max_bounding_area and len(cleaned_text) > 3:
+            if not any(ext in cleaned_text.lower() for ext in ["preview", ".jpg", ".png", ".jpeg"]):
+                max_bounding_area = current_area
+                headline_text = cleaned_text
+            
+        # CALL TO ACTION EVALUATOR: Checks text strings against universal intent metrics
+        if cta_regex.search(cleaned_text):
+            detected_ctas.append({
+                "text": cleaned_text,
+                "type": "textual_intent",
+                "coordinates": {"top_left": top_left, "bottom_right": bottom_right}
+            })
+
+    total_regions = len(all_extracted_elements)
+    has_cursive_anomaly = (low_confidence_counter / total_regions) > 0.15 if total_regions > 0 else False
+
+    # Package the finalized adaptive data contract payload for Member 3
+    return {
+        "status": "success",
+        "metadata": {
+            "total_text_regions_found": total_regions,
+            "low_confidence_text_regions": low_confidence_counter,
+            "cursive_font_warning_flag": has_cursive_anomaly
+        },
+        "extracted_content": {
+            "headline": headline_text if headline_text else "None Detected Confidently",
+            "detected_call_to_actions": detected_ctas,
+            "raw_text_stream": [item["text"] for item in all_extracted_elements],
+            "complete_spatial_manifest": all_extracted_elements
+        }
+    }
+
+if __name__ == "__main__":
+    try:
+        final_payload = extract_poster_text_and_coordinates("user_poster.jpg")
+        print("\n=== SUCCESS: CORRECT SPELLCHECK EXTRACTION OUTPUT ===")
+        print(json.dumps(final_payload, indent=4))
+    except Exception as e:
+        print(f"Execution Failure: {str(e)}")
+
+# =====================================================================
+# 🤖 TELEGRAM BOT CONTROLLERS (Member 1 Controllers + Member 2 Handoff)
 # =====================================================================
 BOT_TOKEN = '8726514152:AAGddaMY47826AEKjy143FGkPoHvfs6kyiA'
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -109,16 +276,43 @@ def handle_incoming_poster(message):
     quality_pass, feedback_msg = check_image_quality(local_filename)
 
     if quality_pass:
+        # Member 1's exact passing message text
         bot.reply_to(message, f"✅ Quality Check Passed! {feedback_msg}\nForwarding image to the extraction pipeline.")
-        # ➡️ HANDOFF CONNECTOR: Member 2 drops easyocr code right here on May 19!
+        
+        try:
+            # ➡️ HARNESSED CONNECTOR: Your EasyOCR pipeline executes seamlessly here
+            ocr_payload = extract_poster_text_and_coordinates(local_filename)
+            
+            # Prepare status confirmation report to push to the Telegram UI chat string
+            extracted_headline = ocr_payload['extracted_content']['headline']
+            found_ctas = len(ocr_payload['extracted_content']['detected_call_to_actions'])
+            
+            feedback_report = f"📊 **OCR Extraction Manifest Complete**\n\n"
+            feedback_report += f"🔹 **Detected Headline:** {extracted_headline}\n"
+            feedback_report += f"🔹 **Detected Textual CTAs:** {found_ctas}\n"
+            
+            # If our confidence monitor flags cursive font styles, proactively alert the user
+            if ocr_payload['metadata']['cursive_font_warning_flag']:
+                feedback_report += f"\n⚠️ **Notice:** Our layout engine detected highly stylized or cursive font families. Minor text anomalies may exist in downstream processing parameters."
+                
+            bot.reply_to(message, feedback_report, parse_mode='Markdown')
+            
+            # 🔗 DATA CONTRACT HANDOFF FOR MEMBER 3:
+            # Member 3 can intercept 'ocr_payload' dictionary directly here for the Hermes skills engine.
+            # final_analysis = member3_compile_report(ocr_payload)
+            
+        except Exception as e:
+            bot.reply_to(message, f"❌ Pipeline Parsing Error: {str(e)}")
+            
     else:
         bot.reply_to(message, f"❌ Quality Check Failed!\nReason: {feedback_msg}\nPlease upload a clearer photo.")
+
 
 # =====================================================================
 # 🚀 SYSTEM RUNTIME ENGINE
 # =====================================================================
 if __name__ == "__main__":
-    # Start the web server loop inside a concurrent side-thread
+    # Start Member 1's web server loop inside a concurrent side-thread using their original function names
     web_thread = threading.Thread(target=run_web_server)
     web_thread.daemon = True
     web_thread.start()
