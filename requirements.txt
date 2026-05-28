@@ -1,4 +1,12 @@
-pyTelegramBotAPI
-opencv-python-headless
+opencv-python
 numpy
+scikit-learn
+easyocr
 flask
+pyTelegramBotAPI
+pyyaml
+pillow
+torch
+torchvision
+torchaudio
+python-dotenv

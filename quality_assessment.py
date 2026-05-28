@@ -14,6 +14,8 @@ import numpy as np
 import telebot
 from flask import Flask
 from spellchecker import SpellChecker
+from color_layout_analysis import compile_color_data
+from dotenv import load_dotenv
 
 # Background container installation hook for EasyOCR setup
 try:
@@ -217,7 +219,7 @@ if __name__ == "__main__":
 # =====================================================================
 # 🤖 TELEGRAM BOT CONTROLLERS (Member 1 Controllers + Member 2 Handoff)
 # =====================================================================
-BOT_TOKEN = '8726514152:AAGddaMY47826AEKjy143FGkPoHvfs6kyiA'
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Welcome Message Handler (/start)
@@ -282,7 +284,7 @@ def handle_incoming_poster(message):
         try:
             # ➡️ HARNESSED CONNECTOR: Your EasyOCR pipeline executes seamlessly here
             ocr_payload = extract_poster_text_and_coordinates(local_filename)
-            
+
             # Prepare status confirmation report to push to the Telegram UI chat string
             extracted_headline = ocr_payload['extracted_content']['headline']
             found_ctas = len(ocr_payload['extracted_content']['detected_call_to_actions'])
@@ -290,23 +292,46 @@ def handle_incoming_poster(message):
             feedback_report = f"📊 **OCR Extraction Manifest Complete**\n\n"
             feedback_report += f"🔹 **Detected Headline:** {extracted_headline}\n"
             feedback_report += f"🔹 **Detected Textual CTAs:** {found_ctas}\n"
-            
+
             # If our confidence monitor flags cursive font styles, proactively alert the user
             if ocr_payload['metadata']['cursive_font_warning_flag']:
                 feedback_report += f"\n⚠️ **Notice:** Our layout engine detected highly stylized or cursive font families. Minor text anomalies may exist in downstream processing parameters."
                 
-            bot.reply_to(message, feedback_report, parse_mode='Markdown')
-            
-            # 🔗 DATA CONTRACT HANDOFF FOR MEMBER 3:
-            # Member 3 can intercept 'ocr_payload' dictionary directly here for the Hermes skills engine.
-            # final_analysis = member3_compile_report(ocr_payload)
-            
+            bot.reply_to(message, feedback_report, parse_mode='Markdown')        
+
+            print("[M3] reached")
+
+            yaml_block, color_data = compile_color_data(
+                image_path=local_filename,
+                ocr_payload=ocr_payload,
+                blur_score=float(feedback_msg.split("Blur Score: ")[1].split(",")[0]) if "Blur Score:" in feedback_msg else 500.0,
+                brightness=float(feedback_msg.split("Brightness: ")[1].split(")")[0]) if "Brightness:" in feedback_msg else 150.0,
+            )
+
+            # Pass yaml_block to Member 4's Hermes skill here.
+            # For now, confirm to Telegram that M3 finished:
+            overall = color_data["overall_campaign_score"]
+            contrast_ratio = color_data["readability_scores"]["best_contrast_ratio"]
+            wcag = color_data["readability_scores"]["wcag_grade"]
+            top_color = color_data["dominant_colors"][0]["hex"]
+            bot.reply_to(
+                message,
+                f"🎨 *Color Analysis Complete*\n\n"
+                f"🏆 *Overall Campaign Score:* {overall}/100\n"
+                f"🖍 *Dominant Color:* `{top_color}`\n"
+                f"⚖️ *Contrast Ratio:* {contrast_ratio} ({wcag})\n"
+                f"📦 YAML data package assembled for AI report generation.",
+                parse_mode='Markdown'
+            )
+
+            # 👉 THIS YAML goes to Member 4 next
+
         except Exception as e:
-            bot.reply_to(message, f"❌ Pipeline Parsing Error: {str(e)}")
+            import traceback
+            bot.reply_to(message, f"❌ Pipeline Parsing Error: {traceback.format_exc()}")
             
     else:
         bot.reply_to(message, f"❌ Quality Check Failed!\nReason: {feedback_msg}\nPlease upload a clearer photo.")
-
 
 # =====================================================================
 # 🚀 SYSTEM RUNTIME ENGINE
