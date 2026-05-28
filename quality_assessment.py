@@ -297,9 +297,17 @@ def handle_incoming_poster(message):
                 
             bot.reply_to(message, feedback_report, parse_mode='Markdown')
             
-            # 🔗 DATA CONTRACT HANDOFF FOR MEMBER 3:
-            # Member 3 can intercept 'ocr_payload' dictionary directly here for the Hermes skills engine.
-            # final_analysis = member3_compile_report(ocr_payload)
+            # 🔗 DATA CONTRACT HANDOFF FOR MEMBER 3/4:
+            # Passing 'ocr_payload' dictionary directly here for the Hermes skills engine.
+            from hermes_skill.skill import member3_compile_report
+            
+            # Send an indicator that we are generating the report
+            bot.reply_to(message, "🧠 Processing data with Hermes AI (Member 4)... Generating Campaign Audit Report.")
+            
+            final_analysis = member3_compile_report(ocr_payload)
+            
+            # Send the final Markdown report back to the user
+            bot.reply_to(message, final_analysis, parse_mode='Markdown')
             
         except Exception as e:
             bot.reply_to(message, f"❌ Pipeline Parsing Error: {str(e)}")
