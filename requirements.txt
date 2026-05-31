@@ -2,3 +2,5 @@ pyTelegramBotAPI
 opencv-python-headless
 numpy
 flask
+matplotlib
+pyspellchecker
