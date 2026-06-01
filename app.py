@@ -90,10 +90,35 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
     typo_list         = []
 
     cta_patterns = [
+        # Action words (primary CTAs)
         r"join\s*now", r"register\s*now", r"scan\s*here", r"scan\s*me",
         r"apply\s*now", r"book\s*now", r"rsvp", r"buy\s*now", r"order\s*now",
         r"click\s*here", r"visit\s*us", r"get\s*yours", r"limited\s*offer",
-        r"bridge\s*the\s*gap", r"cloud\s*run"
+        r"bridge\s*the\s*gap", r"cloud\s*run",
+        r"get\s*started", r"shop\s*now", r"sign\s*up", r"learn\s*more",
+        r"find\s*out\s*more", r"explore", r"save\s*now", r"claim\s*now",
+        r"get\s*\d+%\s*off", r"free\s*delivery", r"free\s*shipping",
+        r"contact\s*us", r"reach\s*us", r"message\s*us", r"dm\s*us", r"call\s*us",
+        r"follow\s*us", r"like\s*us", r"subscribe", r"watch\s*now",
+        # URLs and emails
+        r"www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", 
+        r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b",
+        # Phone numbers (various formats)
+        r"\b\d{8,15}\b", 
+        r"\b\d{3,4}[-\s]\d{3,4}[-\s]\d{3,4}\b",
+        # Social media handles and patterns (more flexible)
+        r"@[a-zA-Z0-9_]{1,30}",  # @handle format (Twitter, Instagram, Facebook)
+        r"(?:instagram|fb|facebook|twitter|tiktok|linkedin|youtube)[.\s]*[:=]?\s*[@/]?[a-zA-Z0-9_.-]{1,50}",  # platform: handle
+        r"(?:follow|visit|find|dm|message)\s+(?:us\s+)?on\s+(?:instagram|facebook|fb|twitter|tiktok|linkedin|youtube)",  # "follow us on Instagram"
+        # Social media handles without @ (e.g., "naturalbeauty_box_gh")
+        r"\b(?:instagram|fb|facebook|tiktok)\s+(?:handle|account|page)?[\s:]*([a-zA-Z0-9_]{3,})",
+        # Explicit handles containing underscores with brand tags
+        r"\b[a-zA-Z0-9_]{3,30}_(?:gh|box|page|shop|store|brand|beauty|feminine)\b",
+        r"\b(?:naturalbeauty)[a-zA-Z0-9_.-]{1,30}\b",
+        # facebook.com/handle or instagram.com/handle
+        r"(?:facebook|instagram|fb)\.com/[a-zA-Z0-9_.-]+",
+        # Brand specific identifiers followed by location or social suffix
+        r"\b(?:box|page|shop|store|brand)[\s]*(?:gh|ng|uk|us|au)\b",
     ]
     cta_regex    = re.compile("|".join(cta_patterns), re.IGNORECASE)
     detected_ctas = []
@@ -201,15 +226,25 @@ def extract_chart_metrics_from_report(audit_report):
             parsed = json.loads(json_match.group(1))
             if 'metrics' in parsed:
                 return parsed['metrics']
-        # Fallback: locate the JSON object by finding "chart_type" key
-        idx = audit_report.find('"chart_type"')
-        if idx != -1:
-            start = audit_report.rfind('{', 0, idx)
-            if start != -1:
-                decoder = json.JSONDecoder()
-                parsed, _ = decoder.raw_decode(audit_report[start:])
+        # Fallback 1: find any JSON block using regex
+        json_blocks = re.findall(r'\{[^{}]*\}', audit_report)
+        for block in json_blocks:
+            try:
+                parsed = json.loads(block)
                 if 'metrics' in parsed:
                     return parsed['metrics']
+            except Exception:
+                pass
+        # Fallback 2: locate the JSON object by finding "chart_type" or "charttype" keys
+        for key in ['"chart_type"', '"charttype"']:
+            idx = audit_report.find(key)
+            if idx != -1:
+                start = audit_report.rfind('{', 0, idx)
+                if start != -1:
+                    decoder = json.JSONDecoder()
+                    parsed, _ = decoder.raw_decode(audit_report[start:])
+                    if 'metrics' in parsed:
+                        return parsed['metrics']
     except Exception as e:
         print(f"⚠️ Could not extract chart metrics from report: {e}")
     return None
@@ -227,6 +262,102 @@ def extract_report_section(audit_report, keywords):
             section = re.sub(r'\n{2,}', '\n\n', section)
             return section.strip()
     return ""
+
+
+def calculate_cta_score_rubric(detected_ctas, raw_text_stream, headline):
+    """
+    Calculate CTA score (0-100) based on marketing rubric, not just binary presence.
+    
+    Rubric factors:
+    - Type strength: action verbs (90pts) > contact paths (60pts) > platform refs (40pts)
+    - Count: 1 CTA=40pts, 2+=60pts
+    - Urgency: presence of 'now', 'limited', 'exclusive' = +15pts
+    - Diversity: phone + email + social = +20pts (multiplier)
+    
+    Returns: 0-100 scale score
+    """
+    if not detected_ctas:
+        return 0
+    
+    # Categorize CTAs by type
+    action_verbs = []  # "buy now", "sign up", "join", "contact us"
+    contact_paths = []  # phone, email, website
+    platform_refs = []  # "@instagram", "facebook/handle"
+    
+    action_verb_patterns = [
+        r"buy\s*now", r"sign\s*up", r"join\s*now", r"register\s*now", 
+        r"contact\s*us", r"call\s*us", r"reach\s*us", r"message\s*us", 
+        r"follow\s*us", r"click\s*here", r"learn\s*more", r"shop\s*now",
+        r"apply\s*now", r"book\s*now", r"subscribe", r"get\s*started"
+    ]
+    action_verb_re = re.compile("|".join(action_verb_patterns), re.IGNORECASE)
+    
+    contact_path_patterns = [
+        r"\b\d{8,15}\b", r"\b\d{3,4}[-\s]\d{3,4}[-\s]\d{3,4}\b",  # phone
+        r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b",  # email
+        r"www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # website
+    ]
+    contact_path_re = re.compile("|".join(contact_path_patterns), re.IGNORECASE)
+    
+    platform_ref_patterns = [
+        r"@[a-zA-Z0-9_]{1,30}",  # @handle
+        r"(?:instagram|fb|facebook|twitter|tiktok|linkedin|youtube)[.\s]*[:=]?\s*[@/]?[a-zA-Z0-9_.-]{1,50}",
+        r"(?:facebook|instagram|fb)\.com/[a-zA-Z0-9_.-]+",  # facebook.com/handle
+        r"[a-z][a-z0-9_]{2,}(?:\sblog|\spagina|\spage|\sbox)?$"  # plain handles
+    ]
+    platform_ref_re = re.compile("|".join(platform_ref_patterns), re.IGNORECASE)
+    
+    for cta in detected_ctas:
+        text = cta.get('text', '').lower() if isinstance(cta, dict) else str(cta).lower()
+        if action_verb_re.search(text):
+            action_verbs.append(cta)
+        elif platform_ref_re.search(text):
+            platform_refs.append(cta)
+        elif contact_path_re.search(text):
+            contact_paths.append(cta)
+    
+    # Base score from type
+    type_score = 0
+    if action_verbs:
+        type_score = 85  # Strong: explicit action verb
+    elif contact_paths and platform_refs:
+        type_score = 70  # Good: phone + social
+    elif contact_paths:
+        type_score = 60  # Moderate: just contact info
+    elif platform_refs:
+        type_score = 50  # Okay: just social handle
+    
+    # Bonus for quantity
+    cta_count = len(detected_ctas)
+    count_bonus = 0
+    if cta_count >= 3:
+        count_bonus = 15  # Multiple CTAs
+    elif cta_count == 2:
+        count_bonus = 8
+    
+    # Bonus for urgency words
+    combined_text = " ".join(raw_text_stream).lower() if raw_text_stream else ""
+    combined_text += " " + headline.lower() if headline else ""
+    urgency_bonus = 0
+    if re.search(r"\b(now|limited|exclusive|today|today\s*only|act\s*now|hurry|urgent|free|offer|special|sale)\b", combined_text):
+        urgency_bonus = 10
+    
+    # Diversity bonus (multiple contact types)
+    diversity_bonus = 0
+    contact_types = len([x for x in [bool(action_verbs), bool(contact_paths), bool(platform_refs)] if x])
+    if contact_types >= 3:
+        diversity_bonus = 15
+    elif contact_types == 2:
+        diversity_bonus = 8
+    
+    # Final score (capped at 100)
+    final_score = min(100, type_score + count_bonus + urgency_bonus + diversity_bonus)
+    
+    # Never 0 if CTAs exist — minimum 35/100
+    if final_score == 0 and detected_ctas:
+        final_score = 35
+    
+    return int(final_score)
 
 
 def extract_cta_section_from_report(audit_report):
@@ -257,7 +388,13 @@ def extract_ai_recommendations_from_report(audit_report):
 def fill_markdown_template(ocr_data, metrics):
     readability_score = 85 if not ocr_data['metadata']['cursive_font_warning_flag'] else 65
     ctas_list         = ocr_data['extracted_content']['detected_call_to_actions']
-    cta_score         = 10 if ctas_list else 0
+    raw_text_stream   = ocr_data['extracted_content']['raw_text_stream']
+    headline_text     = ocr_data['extracted_content']['headline']
+    
+    # Use rubric-based CTA scoring instead of binary
+    cta_score_0_to_100 = calculate_cta_score_rubric(ctas_list, raw_text_stream, headline_text)
+    cta_score          = cta_score_0_to_100  # Keep 0-100 for chart
+    
     visual_impact     = 80 if metrics['blur_score'] > 500 else 60
     total_regions     = ocr_data['metadata']['total_text_regions_found']
     info_clarity      = 75 if total_regions < 15 else 55
@@ -288,21 +425,22 @@ def fill_markdown_template(ocr_data, metrics):
         "[Provide a 2-3 sentence summary evaluating the overall poster design based on text regions and CTAs.]",
         f"This marketing poster presents {total_regions} text regions {cta_presence_text} "
         f"The layout achieves a {'strong' if total_regions < 15 else 'moderate'} information hierarchy. "
-        f"Overall strategic grade: {'A' if cta_score > 5 and total_regions < 15 else 'B'}"
+        f"Overall strategic grade: {'A+' if cta_score >= 80 and total_regions < 15 else 'A' if cta_score >= 70 else 'B+'}"
     ).replace("[Number of text regions]", str(total_regions)
     ).replace("[Comment on cursive font warnings or readability]", cursive_comment
     ).replace("[Is it too cluttered or well-spaced?]", layout_comment
     ).replace("[List of CTAs]", cta_text
-    ).replace("[X]/10", f"{cta_score}/10"
+    ).replace("[X]/10", f"{int(cta_score / 10)}/10"
     ).replace("[Why the CTA is strong, weak, or missing]",
-              "Strong CTA placement detected." if cta_score > 5
-              else "No clear CTA found; add a stronger action trigger."
+              f"CTA strength: {int(cta_score)}/100 — Strong action prompts with clear contact paths." if cta_score >= 70
+              else f"CTA strength: {int(cta_score)}/100 — Moderate CTA; could improve visibility." if cta_score >= 50
+              else f"CTA strength: {int(cta_score)}/100 — Weak or missing CTA; add urgency + contact info."
     ).replace("[Actionable suggestion 1]",
               "Optimise text density: consolidate regions into a clear visual hierarchy"
               if total_regions > 15 else "Maintain clean layout structure"
     ).replace("[Actionable suggestion 2]",
-              "Enhance CTA visibility: use contrasting colours and bold fonts"
-              if cta_score < 5 else "CTA placement is optimal — maintain current strategy"
+              "Enhance CTA visibility: add action verbs + urgency words + multiple contact paths"
+              if cta_score < 70 else "CTA placement is optimal — maintain current strategy"
     ).replace("[Actionable suggestion 3]",
               "Replace cursive fonts with geometric typography for mobile"
               if ocr_data['metadata']['cursive_font_warning_flag']
@@ -314,7 +452,7 @@ def fill_markdown_template(ocr_data, metrics):
         "chart_type": "radar",
         "metrics": {
             "Readability":        readability_score,
-            "CTA_Strength":       cta_score * 10,
+            "CTA_Strength":       cta_score,
             "Visual_Impact":      visual_impact,
             "Information_Clarity": info_clarity
         }
@@ -688,8 +826,8 @@ body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:
     </div>
     <div class="stat">
       <div class="slbl">CTA Status</div>
-      <div class="sval" style="font-size:1.7rem;">{cta_icon}</div>
-      <div class="ssub">{cta_label} &nbsp;·&nbsp; {cta_score_display}</div>
+      <div class="sval" style="font-size:1.5rem;">{cta_score_display}</div>
+      <div class="ssub">Rubric Assessment</div>
     </div>
     <div class="stat">
       <div class="slbl">Text Regions</div>
@@ -729,7 +867,7 @@ body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:
           </div>
           <div style="background:#F8FAFC;border-radius:14px;border:1px solid #E2E8F0;padding:16px;">
             <div class="ir"><span class="il">Text Regions:</span><span class="iv">{total_regions}</span></div>
-            <div class="ir"><span class="il">CTA Status:</span><span class="iv">{cta_icon} {cta_label}</span></div>
+            <div class="ir"><span class="il">CTA Status:</span><span class="iv">{cta_score_display}</span></div>
             <div class="ir"><span class="il">Cursive Font:</span><span class="tag {cursive_cls}">{cursive_txt}</span></div>
             <div class="ir"><span class="il">Blur Score:</span><span class="iv">{blur_val}</span></div>
             <div class="ir"><span class="il">Brightness:</span><span class="iv">{brightness_val}/255</span></div>
@@ -752,7 +890,7 @@ body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:
 
     <div class="card">
       <div class="sbadge"><div class="bnum {cta_num_cls}">3</div><span class="stitle">Call-to-Action (CTA) Analysis</span></div>
-      <span class="cta-badge {cta_badge_cls}">{cta_icon} CTA {cta_label}</span>
+      <span class="cta-badge {cta_badge_cls}">Score: {cta_score_display}</span>
       <div class="sec-text">{cta_html}</div>
       <div class="divider"></div>
       <div class="ir"><span class="il">Detected CTAs:</span><span class="iv" style="font-size:.85rem;">{cta_phrases}</span></div>
@@ -887,14 +1025,34 @@ def handle_incoming_poster(message):
 
     # Prefer metrics extracted from AI report; fall back to local calculations
     report_metrics    = extract_chart_metrics_from_report(audit_report)
-    readability_score = (report_metrics or {}).get('Readability',    85 if not cursive_flag else 65)
-    cta_strength      = (report_metrics or {}).get('CTA_Strength',   10 if ctas_list else 0)
-    visual_impact     = (report_metrics or {}).get('Visual_Impact',  80 if blur_score > 500 else 60)
-    info_clarity      = (report_metrics or {}).get('Information_Clarity', 75 if total_text_blocks < 15 else 55)
+    
+    def get_metric(metrics_dict, standard_key, fallback_val):
+        if not metrics_dict:
+            return fallback_val
+        if standard_key in metrics_dict:
+            return metrics_dict[standard_key]
+        norm_std = standard_key.lower().replace('_', '')
+        for k, v in metrics_dict.items():
+            if k.lower().replace('_', '') == norm_std:
+                return v
+        return fallback_val
 
-    # Normalise CTA strength to 0–100
-    if isinstance(cta_strength, (int, float)) and cta_strength <= 10:
-        cta_strength = int(cta_strength * 10)
+    readability_score = get_metric(report_metrics, 'Readability',    85 if not cursive_flag else 65)
+    # For CTA, prefer LLM's assessment; but ensure it's a proper rubric score (0-100)
+    cta_strength_from_llm = get_metric(report_metrics, 'CTA_Strength', None)
+    if cta_strength_from_llm is not None:
+        # If LLM returned 0-10, convert to 0-100
+        if isinstance(cta_strength_from_llm, (int, float)) and cta_strength_from_llm <= 10:
+            cta_strength = int(cta_strength_from_llm * 10)
+        else:
+            cta_strength = int(cta_strength_from_llm)
+    else:
+        # Fall back to local rubric-based scoring
+        cta_strength = calculate_cta_score_rubric(ctas_list, ocr_result['extracted_content']['raw_text_stream'], ocr_result['extracted_content']['headline'])
+    
+    visual_impact     = get_metric(report_metrics, 'Visual_Impact',  80 if blur_score > 500 else 60)
+    info_clarity      = get_metric(report_metrics, 'Information_Clarity', 75 if total_text_blocks < 15 else 55)
+
     cta_score_display = f"{int(cta_strength)}/100"
 
     cta_found_flag   = len(ctas_list) > 0

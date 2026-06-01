@@ -22,7 +22,17 @@ Provide a 2-3 sentence professional summary of the poster's effectiveness based 
 ## 🎯 3. Call-to-Action (CTA) Analysis
 - List the detected CTAs.
 - Score the CTA strength out of 10.
-- Explain why it's strong or weak. If none are detected, emphasize this as a critical failure for a marketing poster.
+- Provide a brief, professional explanation of why this specific poster received this score (highlighting its strengths like action verbs/contact channels, or weaknesses).
+- Keep it concise (under 4-5 sentences). Do NOT output general marketing rubrics, guides, definitions, or scoring examples. Let the feedback be direct and actionable for the marketing team.
+
+[INTERNAL EVALUATION GUIDELINES - DO NOT OUTPUT THIS BLOCK IN THE REPORT]
+Evaluate CTA strength based on visibility + clarity + actionability:
+- 9-10/10: Multiple clear CTAs with diverse contact paths (phone + social + website)
+- 7-8/10: Clear primary CTA with 1-2 contact options
+- 5-6/10: CTA present but medium visibility/accessibility
+- 3-4/10: Weak or hidden CTA
+- 0-1/10: No action prompt, no contact info visible
+[END OF INTERNAL GUIDELINES]
 
 ## 🚀 4. Improvement Suggestions
 Provide 3 actionable bullet points on how to improve the marketing material based on the data.

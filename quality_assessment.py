@@ -118,10 +118,35 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
     typo_list = []
     
     cta_patterns = [
-        r"join\s*now", r"register\s*now", r"scan\s*here", r"scan\s*me", 
+        # Action words (primary CTAs)
+        r"join\s*now", r"register\s*now", r"scan\s*here", r"scan\s*me",
         r"apply\s*now", r"book\s*now", r"rsvp", r"buy\s*now", r"order\s*now",
-        r"click\s*here", r"visit\s*us", r"get\s*yours", r"limited\s*offer", 
-        r"bridge\s*the\s*gap", r"cloud\s*run"
+        r"click\s*here", r"visit\s*us", r"get\s*yours", r"limited\s*offer",
+        r"bridge\s*the\s*gap", r"cloud\s*run",
+        r"get\s*started", r"shop\s*now", r"sign\s*up", r"learn\s*more",
+        r"find\s*out\s*more", r"explore", r"save\s*now", r"claim\s*now",
+        r"get\s*\d+%\s*off", r"free\s*delivery", r"free\s*shipping",
+        r"contact\s*us", r"reach\s*us", r"message\s*us", r"dm\s*us", r"call\s*us",
+        r"follow\s*us", r"like\s*us", r"subscribe", r"watch\s*now",
+        # URLs and emails
+        r"www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", 
+        r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b",
+        # Phone numbers (various formats)
+        r"\b\d{8,15}\b", 
+        r"\b\d{3,4}[-\s]\d{3,4}[-\s]\d{3,4}\b",
+        # Social media handles and patterns (more flexible)
+        r"@[a-zA-Z0-9_]{1,30}",  # @handle format
+        r"(?:instagram|fb|facebook|twitter|tiktok|linkedin|youtube)[.\s]*[:=]?\s*[@/]?[a-zA-Z0-9_.-]{1,50}",  # platform: handle
+        r"(?:follow|visit|find|dm|message)\s+(?:us\s+)?on\s+(?:instagram|facebook|fb|twitter|tiktok|linkedin|youtube)",
+        # Social media handles without @ (e.g., "naturalbeauty_box_gh")
+        r"\b(?:instagram|fb|facebook|tiktok)\s+(?:handle|account|page)?[\s:]*([a-zA-Z0-9_]{3,})",
+        # Explicit handles containing underscores with brand tags
+        r"\b[a-zA-Z0-9_]{3,30}_(?:gh|box|page|shop|store|brand|beauty|feminine)\b",
+        r"\b(?:naturalbeauty)[a-zA-Z0-9_.-]{1,30}\b",
+        # facebook.com/handle or instagram.com/handle
+        r"(?:facebook|instagram|fb)\.com/[a-zA-Z0-9_.-]+",
+        # Brand specific identifiers followed by location or social suffix
+        r"\b(?:box|page|shop|store|brand)[\s]*(?:gh|ng|uk|us|au)\b",
     ]
     cta_regex = re.compile("|".join(cta_patterns), re.IGNORECASE)
     detected_ctas = []
