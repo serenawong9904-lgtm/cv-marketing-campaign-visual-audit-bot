@@ -4,3 +4,7 @@ numpy
 flask
 matplotlib
 pyspellchecker
+python-dotenv
+easyocr
+pyyaml
+requests
