@@ -9,6 +9,8 @@ import re
 import json
 import cv2
 import telebot
+import threading
+from flask import Flask
 from spellchecker import SpellChecker
 from pathlib import Path
 import yaml
@@ -18,6 +20,21 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+# =====================================================================
+# 🌐 RENDER WEB PORT COMPLIANCE KEEPER (ADDED BACKGROUND THREAD)
+# =====================================================================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot port is connected and running live on Render!"
+
+def run_web_server():
+    # Render passes an environment variable named PORT. Default to 10000.
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
 
 from color_layout_analysis import compile_color_data
 
@@ -585,7 +602,7 @@ def build_dashboard_html(blueprint_data, report_text_log, html_filename="dashboa
             if not s:
                 rows.append('<div style="height:6px;"></div>')
                 continue
-            s = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', s)
+            s = re.sub(r'\*\frac{(.*?)}{(.*?)}', r'<strong>\1</strong>', s)
             if s.startswith('- ') or s.startswith('* '):
                 rows.append(f'<div class="rli">{s[2:]}</div>')
             else:
@@ -1131,10 +1148,19 @@ def handle_incoming_poster(message):
         bot.send_message(chat_id, MESSAGES['pipeline_handoff_error'].format(error=str(e)))
 
 
+# =====================================================================
+# 🚀 THREADED HOST EXECUTION
+# =====================================================================
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
     print(f"ℹ️ Hermes Skill available: {HERMES_SKILL_AVAILABLE}")
     print(f"ℹ️ OpenRouter API key present: {HERMES_KEY_AVAILABLE}")
     run_hermes_skill_sample_test()
-    print("✅ Bot running — send a poster image to start the pipeline.")
+    
+    # Fire up the concurrent Flask worker thread for port compliance
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
+    
+    print("✅ Bot running — live on Render infrastructure.")
     bot.infinity_polling()
