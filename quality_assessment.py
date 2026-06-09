@@ -2,7 +2,7 @@
 """
 📊 MCVA Standalone Quality Assessment & High-Fidelity Dashboard Engine
 Unified Pipeline: Member 1 (Quality Check) + Member 2 (Adaptive OCR Core) 
-                  + Member 4 (Hermes AI Report Hook) + Member 5 (Premium Light Dashboard Canvas)
+                  + Member 4 (AI Report Hook) + Member 5 (Premium Light Dashboard Canvas)
 Environment: Standalone Evaluation Module (Does not poll Telegram or run Flask)
 """
 
@@ -34,28 +34,41 @@ except ImportError:
     import easyocr
 
 # =====================================================================
-# 📋 LOAD TEMPLATES FROM HERMES_SKILL FOLDER
+# 📋 LOAD TEMPLATES FROM AI_SKILL FOLDER
 # =====================================================================
 def load_templates():
-    """Load all message templates and markdown templates from hermes_skill folder."""
-    hermes_path = Path(__file__).parent / "hermes_skill"
+    """Load all message templates and markdown templates from marketing-visual-audit folder."""
+    skill_path = Path(__file__).parent / "marketing-visual-audit"
     
     # Load markdown template
-    markdown_file = hermes_path / "markdown_template.md"
-    with open(markdown_file, "r", encoding="utf-8") as f:
-        markdown_template = f.read()
-    
-    return markdown_template
+    markdown_file = skill_path / "SKILL.md"
+    try:
+        with open(markdown_file, "r", encoding="utf-8") as f:
+            markdown_template = f.read()
+        return markdown_template
+    except FileNotFoundError:
+        return ""
 
 MARKDOWN_TEMPLATE = load_templates()
 
-# Safe fallback module integration for Member 4's Hermes AI Skill report generator
+# Safe fallback module integration for Member 4's AI Skill report generator
 try:
-    from hermes_skill.skill import member3_compile_report
-except ImportError:
-    print("⚠️ Notice: hermes_skill module not detected in current working environment directory. Activating mock generation wrapper.")
+    import importlib.util
+    import sys
+    
+    skill_path = Path(__file__).parent / "marketing-visual-audit" / "scripts" / "skill.py"
+    if skill_path.exists():
+        spec = importlib.util.spec_from_file_location("skill", skill_path)
+        skill_module = importlib.util.module_from_spec(spec)
+        sys.modules["skill"] = skill_module
+        spec.loader.exec_module(skill_module)
+        member3_compile_report = skill_module.member3_compile_report
+    else:
+        raise ImportError("marketing-visual-audit/scripts/skill.py not found")
+except Exception as e:
+    print(f"⚠️ Notice: skill module not detected ({e}). Activating mock generation wrapper.")
     def member3_compile_report(ocr_payload):
-        """ Safe text simulation wrapper contract mimicking your team's Hermes summary generation output layout """
+        """ Safe text simulation wrapper contract mimicking your team's AI summary generation output layout """
         markdown_summary = (
             "## 📊 # Marketing Campaign Visual Audit Report\n\n"
             "### ## 📝 1. Audit Summary\n"
@@ -67,6 +80,8 @@ except ImportError:
         )
         return markdown_summary
 
+# =====================================================================
+# Safe fallback module integration for Member 4's OpenRouter AI Skill report generator
 # =====================================================================
 # 🔬 1. CORE COMPUTER VISION PROCESSING PIPELINE (Member 1 Engine)
 # =====================================================================
@@ -506,10 +521,10 @@ if __name__ == "__main__":
             print(f"⚠️ Color analysis skipped: {str(e)}")
             color_data = None
         
-        # Trigger Member 4's Hermes Summary Generation report logic
-        print("🧠 Invoking Hermes AI Model Parsing Hook...")
+        # Trigger Member 4's AI Summary Generation report logic
+        print("🧠 Generating summary report...")
         report_text_log = member3_compile_report(ocr_payload)
-        print("\n=== SUCCESS: HERMES TEXT EXTRACT REPORT MAPPED ===")
+        print("\n=== SUCCESS: AI TEXT EXTRACT REPORT MAPPED ===")
         print(report_text_log)
         
         # Formulate comprehensive blueprint contract structure passing to Member 5

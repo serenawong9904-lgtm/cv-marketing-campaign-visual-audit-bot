@@ -21,16 +21,21 @@ except ImportError:
 
 from color_layout_analysis import compile_color_data
 
-# ── Hermes Skill (AI report generator) ───────────────────────────────
-HERMES_SAMPLE_HEALTH = "Not tested"
-HERMES_KEY_AVAILABLE = False
+# ── AI Skill (AI report generator) ───────────────────────────────
+MVA_SAMPLE_HEALTH = "Not tested"
+MVA_KEY_AVAILABLE = False
 try:
-    from hermes_skill.skill import member3_compile_report, OPENROUTER_KEY_AVAILABLE
-    HERMES_SKILL_AVAILABLE = True
-    HERMES_KEY_AVAILABLE = OPENROUTER_KEY_AVAILABLE
-except ImportError:
-    HERMES_SKILL_AVAILABLE = False
-    print("⚠️ hermes_skill.skill unavailable; falling back to local report generation.")
+    from importlib import import_module
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "marketing-visual-audit", "scripts"))
+    skill_module = import_module("skill")
+    member3_compile_report = skill_module.member3_compile_report
+    OPENROUTER_KEY_AVAILABLE = skill_module.OPENROUTER_KEY_AVAILABLE
+    MVA_SKILL_AVAILABLE = True
+    MVA_KEY_AVAILABLE = OPENROUTER_KEY_AVAILABLE
+except Exception as e:
+    MVA_SKILL_AVAILABLE = False
+    print(f"⚠️ marketing-visual-audit skill unavailable ({e}); falling back to local report generation.")
 
 try:
     import easyocr
@@ -40,19 +45,19 @@ except ImportError:
 
 
 # =====================================================================
-# 📋 LOAD ASSETS FROM hermes_skill FOLDER
+# 📋 LOAD ASSETS FROM marketing-visual-audit FOLDER
 # =====================================================================
-def load_hermes_skill_assets():
-    hermes_path = Path(__file__).parent / "hermes_skill"
-    with open(hermes_path / "messages.yaml", "r", encoding="utf-8") as f:
+def load_mva_skill_assets():
+    mva_path = Path(__file__).parent / "marketing-visual-audit" / "assets"
+    with open(mva_path / "messages.yaml", "r", encoding="utf-8") as f:
         messages = yaml.safe_load(f)
-    with open(hermes_path / "markdown_template.md", "r", encoding="utf-8") as f:
+    with open(mva_path / "markdown_template.md", "r", encoding="utf-8") as f:
         markdown_template = f.read()
-    with open(hermes_path / "sample_input.yaml", "r", encoding="utf-8") as f:
+    with open(mva_path / "sample_input.yaml", "r", encoding="utf-8") as f:
         sample_input = yaml.safe_load(f)
     return messages, markdown_template, sample_input
 
-MESSAGES, MARKDOWN_TEMPLATE, HERMES_SAMPLE_INPUT = load_hermes_skill_assets()
+MESSAGES, MARKDOWN_TEMPLATE, MVA_SAMPLE_INPUT = load_mva_skill_assets()
 
 
 # =====================================================================
@@ -467,7 +472,7 @@ def fill_markdown_template(ocr_data, metrics):
 
 
 def generate_audit_report(ocr_data, metrics):
-    """Use Hermes Skill when available; fall back to local markdown template."""
+    """Use AI Skill when available; fall back to local markdown template."""
     payload = {
         "metadata":         ocr_data["metadata"],
         "extracted_content": ocr_data["extracted_content"],
@@ -476,8 +481,8 @@ def generate_audit_report(ocr_data, metrics):
             "brightness_score": metrics["brightness_score"]
         }
     }
-    if HERMES_SKILL_AVAILABLE:
-        if not HERMES_KEY_AVAILABLE:
+    if MVA_SKILL_AVAILABLE:
+        if not MVA_KEY_AVAILABLE:
             print("⚠️ OpenRouter key missing — falling back to local report.")
             return fill_markdown_template(ocr_data, metrics)
         try:
@@ -488,26 +493,26 @@ def generate_audit_report(ocr_data, metrics):
                 return fill_markdown_template(ocr_data, metrics)
             return report
         except Exception as e:
-            print(f"⚠️ Hermes Skill failed: {e}")
+            print(f"⚠️ AI Skill failed: {e}")
             return fill_markdown_template(ocr_data, metrics)
     return fill_markdown_template(ocr_data, metrics)
 
 
-def run_hermes_skill_sample_test():
-    global HERMES_SAMPLE_HEALTH
-    if not HERMES_SKILL_AVAILABLE:
-        HERMES_SAMPLE_HEALTH = "Hermes Skill unavailable; fallback report generation active."
-        print(f"ℹ️ {HERMES_SAMPLE_HEALTH}")
+def run_mva_skill_sample_test():
+    global MVA_SAMPLE_HEALTH
+    if not MVA_SKILL_AVAILABLE:
+        MVA_SAMPLE_HEALTH = "AI Skill unavailable; fallback report generation active."
+        print(f"ℹ️ {MVA_SAMPLE_HEALTH}")
         return
     try:
-        sample_report = member3_compile_report(HERMES_SAMPLE_INPUT)
+        sample_report = member3_compile_report(MVA_SAMPLE_INPUT)
         if sample_report and not sample_report.startswith("❌"):
-            HERMES_SAMPLE_HEALTH = "Hermes Skill sample payload executed successfully."
+            MVA_SAMPLE_HEALTH = "AI Skill sample payload executed successfully."
         else:
-            HERMES_SAMPLE_HEALTH = "Hermes Skill returned a fallback or error response."
+            MVA_SAMPLE_HEALTH = "AI Skill returned a fallback or error response."
     except Exception as e:
-        HERMES_SAMPLE_HEALTH = f"Hermes Skill sample test failed: {e}"
-    print(f"ℹ️ {HERMES_SAMPLE_HEALTH}")
+        MVA_SAMPLE_HEALTH = f"AI Skill sample test failed: {e}"
+    print(f"ℹ️ {MVA_SAMPLE_HEALTH}")
 
 
 # =====================================================================
@@ -1133,8 +1138,8 @@ def handle_incoming_poster(message):
 
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
-    print(f"ℹ️ Hermes Skill available: {HERMES_SKILL_AVAILABLE}")
-    print(f"ℹ️ OpenRouter API key present: {HERMES_KEY_AVAILABLE}")
-    run_hermes_skill_sample_test()
+    print(f"ℹ️ AI Skill available: {MVA_SKILL_AVAILABLE}")
+    print(f"ℹ️ OpenRouter API key present: {MVA_KEY_AVAILABLE}")
+    run_mva_skill_sample_test()
     print("✅ Bot running — send a poster image to start the pipeline.")
     bot.infinity_polling()
