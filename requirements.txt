@@ -2,3 +2,9 @@ pyTelegramBotAPI
 opencv-python-headless
 numpy
 flask
+matplotlib
+pyspellchecker
+python-dotenv
+easyocr
+pyyaml
+requests
