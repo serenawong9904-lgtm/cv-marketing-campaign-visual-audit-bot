@@ -2,3 +2,10 @@
 .venv
 __pycache__/
 *.pyc
+
+# Generated files & user uploads
+user_poster.*
+dashboard.html
+dashboard.png
+dashboard_data.json
+parsed_spec.txt

@@ -1,31 +1,17 @@
 welcome_message: |
-  📊 *Welcome to the Marketing Campaign Visual Auditor Bot!* 📊
+  🖼️ **POSTER AUDIT UTILITIES** 🖼️
 
-  This bot helps marketing and business management instantly evaluate the design effectiveness of promotional materials.
+  **What can this bot do?**
+  1. Image Quality Check (Blur & Brightness Analysis)
+  2. Text & Headline Extraction (EasyOCR)
+  3. Call-To-Action (CTA) Detection & Rubric Scoring
+  4. Color Contrast & Readability Assessment
+  5. AI Marketing Audit Report (OpenRouter)
 
-  📥 *What to do:* 
-  Please upload a **poster, advertisement, product photo, Instagram post, or event banner image** directly to this chat.
+  **How to use:**
+  Simply upload a marketing poster or digital ad image to this chat. Our pipeline will instantly analyze it and generate an interactive dashboard and a professional audit report!
 
-  ⚙️ *What we process:* 
-  1. Check image quality (blur and brightness analysis).
-  2. Extract text layout metrics using OCR.
-  3. Evaluate color contrast readability.
-
-  🏁 *What you will receive:* 
-  Our Hermes AI will generate a detailed **Campaign Audit Report** including:
-  ✅ Readability Score & Color Contrast Analysis
-  ✅ Call-to-Action (CTA) Analysis & Score
-  ✅ Improvement Suggestions
-  ✅ Social Media Platform Suitability
-  📊 Plus an automated **Visual Dashboard Chart**!
-
-  🚨 *CRITICAL INPUT REQUIREMENT:* 🚨
-  To ensure accurate OCR text extraction and precise color analysis, this bot **ONLY accepts high-quality, high-resolution original digital images**.
-
-  ❌ *What will be rejected:* Low-resolution images, blurry camera photos, highly compressed screenshots, or dark images.
-
-  Ready? Upload your design graphic now! 👇
-  💡 *Type /end anytime to close your analysis session.*
+  💡 *You can type /help at any time to see this menu again.*
 end_message: |
   🏁 *Session Ended Successfully!* 🏁
 
