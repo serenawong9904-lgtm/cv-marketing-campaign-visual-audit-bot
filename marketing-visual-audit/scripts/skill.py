@@ -93,3 +93,45 @@ def member3_compile_report(ocr_payload):
     markdown_report = generate_audit_report(yaml_formatted_data)
     
     return markdown_report
+
+def generate_bot_response(user_text):
+    """
+    Acts as the 'Bot Response Skill' to handle general chat and commands.
+    """
+    if not OPENROUTER_KEY_AVAILABLE:
+        return "⚠️ OpenRouter API Key is missing. I cannot chat right now."
+        
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://github.com/serenawong9904-lgtm/cv-marketing-campaign-visual-audit-bot/tree/telegram-quality-assessment",
+        "X-Title": "Visual Auditor Bot",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an intelligent Agentic AI managing a Marketing Campaign Visual Audit Bot. You can answer questions about the bot's status, agents, and capabilities. Keep your answers brief and helpful. If they ask to audit a poster, remind them to upload an image."
+            },
+            {
+                "role": "user",
+                "content": user_text
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content']
+        else:
+            return f"❌ OpenRouter Error: {response.text}"
+    except Exception as e:
+        return f"❌ Connection Error: {str(e)}"

@@ -9,6 +9,7 @@ import re
 import json
 import cv2
 import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from spellchecker import SpellChecker
 from pathlib import Path
 import yaml
@@ -30,6 +31,7 @@ try:
     sys.path.append(os.path.join(os.path.dirname(__file__), "marketing-visual-audit", "scripts"))
     skill_module = import_module("skill")
     member3_compile_report = skill_module.member3_compile_report
+    generate_bot_response = getattr(skill_module, "generate_bot_response", None)
     OPENROUTER_KEY_AVAILABLE = skill_module.OPENROUTER_KEY_AVAILABLE
     MVA_SKILL_AVAILABLE = True
     MVA_KEY_AVAILABLE = OPENROUTER_KEY_AVAILABLE
@@ -950,12 +952,16 @@ body{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:
 # =====================================================================
 # 🤖 TELEGRAM BOT HANDLERS
 # =====================================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8726514152:AAGddaMY47826AEKjy143FGkPoHvfs6kyiA").strip()
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("⚠️ BOT_TOKEN is missing! Please set it in your .env file.")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# Global dictionary to store processed data for each user
+USER_SESSIONS = {}
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     bot.reply_to(message, MESSAGES['welcome_message'], parse_mode='Markdown')
 
@@ -967,10 +973,16 @@ def send_end_message(message):
 
 @bot.message_handler(func=lambda _: True, content_types=['text'])
 def handle_text_fallback(message):
-    if message.text.strip().lower() in ('/end', '/start'):
+    if message.text.strip().lower() in ('/end', '/start', '/help'):
         return
-    bot.reply_to(message, MESSAGES['operational_mode'])
-
+        
+    if MVA_SKILL_AVAILABLE and generate_bot_response:
+        bot.send_chat_action(message.chat.id, 'typing')
+        bot.reply_to(message, "🧠 Agent thinking...")
+        reply = generate_bot_response(message.text)
+        bot.send_message(message.chat.id, reply)
+    else:
+        bot.reply_to(message, MESSAGES['operational_mode'])
 
 @bot.message_handler(content_types=['photo'])
 def handle_incoming_poster(message):
@@ -1115,25 +1127,115 @@ def handle_incoming_poster(message):
         'color_data': color_data if color_data else {}
     }
 
-    # ── Send audit report ───────────────────────────────────────────
-    try:
-        bot.send_message(chat_id, audit_report, parse_mode='Markdown')
-    except Exception:
-        # Markdown failed (bad syntax) or too long — send as plain text
-        plain = audit_report[:4090] + ('…' if len(audit_report) > 4090 else '')
-        try:
-            bot.send_message(chat_id, plain)
-        except Exception as e:
-            bot.send_message(chat_id, f"⚠️ Could not send report: {e}")
+    # ── Save session data and show menu ────────────────────────────
+    USER_SESSIONS[chat_id] = {
+        'blueprint': integrated_blueprint,
+        'report': audit_report,
+        'ocr_result': ocr_result,
+        'blur_score': blur_score,
+        'brightness_score': brightness_score
+    }
 
-    # ── Generate and send HTML dashboard ─────────────────────────────
-    try:
-        build_dashboard_html(integrated_blueprint, audit_report)
-        with open("dashboard.html", "rb") as html_file:
-            bot.send_document(chat_id, html_file,
-                caption="🌐 Full Dashboard — download and open in Chrome/Edge")
-    except Exception as e:
-        bot.send_message(chat_id, MESSAGES['pipeline_handoff_error'].format(error=str(e)))
+    markup = InlineKeyboardMarkup()
+    markup.row_width = 1
+    markup.add(
+        InlineKeyboardButton("🌐 Generate HTML Dashboard", callback_data="btn_dashboard"),
+        InlineKeyboardButton("📝 Full AI Audit Report", callback_data="btn_audit"),
+        InlineKeyboardButton("🎯 Call-To-Action Score", callback_data="btn_cta"),
+        InlineKeyboardButton("👁️ Image Quality Score", callback_data="btn_quality"),
+        InlineKeyboardButton("🔍 OCR Extracted Text", callback_data="btn_ocr")
+    )
+    
+    menu_text = "✅ **Poster successfully analyzed!** What would you like to view?"
+    bot.reply_to(message, menu_text, parse_mode='Markdown', reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_inline_button_clicks(call):
+    chat_id = call.message.chat.id
+    
+    # Acknowledge the button click so the Telegram loading spinner stops
+    bot.answer_callback_query(call.id)
+    
+    if chat_id not in USER_SESSIONS:
+        bot.send_message(chat_id, "⚠️ Session expired. Please upload the poster again.")
+        return
+        
+    session = USER_SESSIONS[chat_id]
+    data = call.data
+    
+    if data == "btn_dashboard":
+        bot.send_chat_action(chat_id, 'upload_document')
+        try:
+            build_dashboard_html(session['blueprint'], session['report'])
+            with open("dashboard.html", "rb") as html_file:
+                bot.send_document(chat_id, html_file, caption="🌐 Full Dashboard — download and open in Chrome/Edge")
+        except Exception as e:
+            bot.send_message(chat_id, f"⚠️ Error building dashboard: {e}")
+            
+    elif data == "btn_audit":
+        report = session['report']
+        try:
+            bot.send_message(chat_id, report, parse_mode='Markdown')
+        except Exception:
+            plain = report[:4090] + ('…' if len(report) > 4090 else '')
+            bot.send_message(chat_id, plain)
+            
+    elif data == "btn_cta":
+        blueprint = session['blueprint']
+        cta_data = blueprint.get('cta_analysis', {})
+        
+        score_text = f"🎯 **Call-To-Action Analysis**\n\n"
+        score_text += f"**Score:** {cta_data.get('score', 0)}/100\n"
+        score_text += f"**Status:** {'Found' if cta_data.get('cta_found') else 'Not Found'}\n\n"
+        
+        if cta_data.get('cta_found'):
+            score_text += "**Detected CTAs:**\n"
+            for cta in cta_data.get('detected_ctas', []):
+                score_text += f"- `{cta}`\n"
+        
+        score_text += f"\n**AI Analysis:**\n{cta_data.get('details', 'No detailed analysis available.')}"
+        bot.send_message(chat_id, score_text, parse_mode='Markdown')
+        
+    elif data == "btn_quality":
+        blur = session['blur_score']
+        bright = session['brightness_score']
+        
+        quality_text = f"👁️ **Image Quality Assessment**\n\n"
+        quality_text += f"**Blur Variance (Laplacian):** `{round(blur, 1)}`\n"
+        quality_text += f"*(< 300 is considered too blurry)*\n\n"
+        quality_text += f"**Mean Brightness:** `{round(bright, 1)}/255`\n"
+        quality_text += f"*(< 40 is considered too dark)*"
+        
+        bot.send_message(chat_id, quality_text, parse_mode='Markdown')
+        
+    elif data == "btn_ocr":
+        ocr = session['ocr_result']
+        extracted = ocr.get('extracted_content', {})
+        meta = ocr.get('metadata', {})
+        
+        ocr_text = f"🔍 **OCR Extraction Results**\n\n"
+        ocr_text += f"**Detected Headline:**\n`{extracted.get('headline', 'None')}`\n\n"
+        ocr_text += f"**Total Text Regions:** {meta.get('total_text_regions_found', 0)}\n"
+        ocr_text += f"**Cursive Font Warning:** {'Yes ⚠️' if meta.get('cursive_font_warning_flag') else 'No ✅'}\n\n"
+        
+        raw = extracted.get('raw_text_stream', 'No text extracted')
+        if len(raw) > 500:
+            raw = raw[:500] + "...(truncated)"
+            
+        ocr_text += f"**Raw Text Stream:**\n{raw}"
+        bot.send_message(chat_id, ocr_text, parse_mode='Markdown')
+
+# =====================================================================
+# 🎛️ COMMAND HANDLERS FOR INTERACTIVE MENU
+# =====================================================================
+
+def get_session(chat_id):
+    if chat_id not in USER_SESSIONS:
+        bot.send_message(chat_id, "⚠️ No active session found. Please upload a poster first!")
+        return None
+    return USER_SESSIONS[chat_id]
+
+
 
 
 if __name__ == "__main__":
