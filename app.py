@@ -89,7 +89,12 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
     # paragraph=True naturally combines split lines (like "GET YOUR" and "TICKET") 
     # horizontally before processing, saving your text fragments from breaking.
     reader  = easyocr.Reader(['en'], gpu=False)
-    results = reader.readtext(image_path, paragraph=True, x_ths=1.2, y_ths=0.5)
+    
+    # We pass the raw image path directly.
+    # Setting paragraph=False is CRITICAL here, otherwise EasyOCR merges the entire poster
+    # into a single massive text region, which ruins coordinate tracking and confuses the engine
+    # (causing it to read '%' as '8').
+    results = reader.readtext(image_path, paragraph=False)
 
     if not results:
         return {"status": "error", "message": "No text detected in the image."}
@@ -148,7 +153,7 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
     # Local structural noise filters (prevents corporate tags from muddying classifications)
     NOISE_EXCLUSIONS = {"zus", "preview", "handling", "position", "menu", "lalaport"}
 
-    for (bbox, text) in results:
+    for (bbox, text, confidence) in results:
         top_left     = [int(bbox[0][0]), int(bbox[0][1])]
         bottom_right = [int(bbox[2][0]), int(bbox[2][1])]
         text_line    = text.strip()
@@ -202,22 +207,10 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
             })
 
         # ── STEP 4: DELIBERATE BACKGROUND SPELLCHECK MATRIX ──
-        processed_words = []
-        for word in eval_phrase.split():
-            clean_word = word.lower().strip('`~!@#$%^&*()-_=+[{]};:\'",<.>/?|•・')
-            
-            if clean_word in spell or len(clean_word) <= 2 or any(c.isdigit() for c in clean_word):
-                processed_words.append(word)
-                continue
-                
-            correction = spell.correction(clean_word)
-            if correction and correction != clean_word:
-                typo_list.append(f'"{clean_word}" -> "{correction}"')
-                processed_words.append(correction.upper() if word.isupper() else correction.capitalize() if word[0].isupper() else correction)
-            else:
-                processed_words.append(word)
-
-        final_cleaned_line = " ".join(processed_words)
+        # DISABLED: Aggressive spellchecking destroys non-English text (like Lorem Ipsum)
+        # and forcefully converts valid stylised brand names into random dictionary words.
+        # We rely on the Layer 2 AI context adjuster to fix true typos instead.
+        final_cleaned_line = text_line
 
         # ── STEP 5: SPATIAL MAP DATA BLUEPRINT ──
         width  = bottom_right[0] - top_left[0]
@@ -227,7 +220,7 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
         element_entry = {
             "text": final_cleaned_line,
             "raw_ocr_original": text_line,
-            "confidence": 0.85,
+            "confidence": float(round(confidence, 3)),
             "bounding_box": {"top_left": top_left, "bottom_right": bottom_right}
         }
         all_extracted_elements.append(element_entry)
@@ -267,7 +260,7 @@ def extract_poster_text_and_coordinates(image_path="user_poster.jpg"):
             \"\"\"
             
             Task:
-            If a dominant headline or title phrase has been mangled by automated spellcheck dictionaries (e.g., "Latte" or "Latté" was forced into "hate", or split away from "FREE"), identify the corrected, unified main title line.
+            If a dominant headline or title phrase has been mangled by automated spellcheck dictionaries (e.g., "Latte" or "Latté" was forced into "late", or split away from "FREE"), identify the corrected, unified main title line.
             
             Return ONLY a raw valid JSON object matching this schema:
             {{
@@ -599,7 +592,7 @@ def generate_audit_report(ocr_data, metrics):
             return fill_markdown_template(ocr_data, metrics)
         try:
             report = member3_compile_report(payload)
-            if isinstance(report, str) and report.startswith("❌"):
+            if isinstance(report, str) and (report.startswith("❌") or len(report.strip()) < 150 or "User safety" in report):
                 return fill_markdown_template(ocr_data, metrics)
             if not report or not report.strip():
                 return fill_markdown_template(ocr_data, metrics)
@@ -1112,10 +1105,10 @@ def handle_incoming_poster(message):
         return
 
     blur_score, brightness_score = quality_metrics
-    bot.reply_to(message, MESSAGES['image_quality_pass'].format(
-        blur_score=round(blur_score, 1),
-        brightness_score=round(brightness_score, 1)
-    ))
+    # bot.reply_to(message, MESSAGES['image_quality_pass'].format(
+    #     blur_score=round(blur_score, 1),
+    #     brightness_score=round(brightness_score, 1)
+    # ))
 
     # ── OCR extraction ──────────────────────────────────────────────
     ocr_result = extract_poster_text_and_coordinates(local_image_path)
@@ -1130,11 +1123,11 @@ def handle_incoming_poster(message):
     typos_list        = ocr_result['extracted_content']['typos_found']
 
     cursive_notice = "\n⚠️ **Notice:** Cursive font families detected." if cursive_flag else ""
-    bot.reply_to(message, MESSAGES['feedback_report'].format(
-        headline=headline,
-        cta_count=len(ctas_list),
-        cursive_flag=cursive_notice
-    ), parse_mode='Markdown')
+    # bot.reply_to(message, MESSAGES['feedback_report'].format(
+    #     headline=headline,
+    #     cta_count=len(ctas_list),
+    #     cursive_flag=cursive_notice
+    # ), parse_mode='Markdown')
 
     # ── Color & layout analysis ─────────────────────────────────────
     try:
