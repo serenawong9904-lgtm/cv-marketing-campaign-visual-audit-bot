@@ -22,7 +22,8 @@ from build_dashboard import (
     extract_chart_metrics_from_report,
     calculate_cta_score_rubric,
     extract_cta_section_from_report,
-    extract_ai_recommendations_from_report
+    extract_ai_recommendations_from_report,
+    extract_report_section
 )
 
 try:
